@@ -1,0 +1,316 @@
+esphome:
+  name: ev-industrial-bridge
+  includes:
+    - <lwip/sockets.h>
+    - <fcntl.h>
+    - <errno.h>
+    - <cstring>
+    - <arpa/inet.h>
+    - <cstdlib>
+  on_boot:
+    then:
+      - logger.log: "🚀 BOOT: Modbus TCP slave (fast poll) + P1 sender (10s) + Direct Socket Scraper DEBUG (1s)"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_LWIP_MAX_SOCKETS: "24"
+
+wifi:
+  fast_connect: true
+  networks:
+    - ssid: "TOCHANGEnetwork_sid"
+      password: "TOCHANGEpassword"
+
+api:
+ota:
+  - platform: esphome
+web_server:
+  port: 80
+  version: 3
+
+logger:
+  level: INFO
+
+uart:
+  - id: p1_bus
+    tx_pin:
+      number: GPIO6
+      inverted: true
+      mode: OUTPUT_OPEN_DRAIN
+    baud_rate: 115200
+    stop_bits: 1
+    data_bits: 8
+    parity: NONE
+
+globals:
+  - id: target_grid_current
+    type: int
+    restore_value: no
+    initial_value: '16'
+  - id: p1_transmission_enabled
+    type: bool
+    restore_value: no
+    initial_value: 'true'
+  - id: send_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: mb_listen_fd
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  - id: mb_client_fd
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  - id: last_grid_watts
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          if (id(mb_listen_fd) < 0) {
+            int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            if (fd >= 0) {
+              ::fcntl(fd, F_SETFL, O_NONBLOCK);
+              int opt = 1;
+              ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+              struct sockaddr_in server_addr;
+              memset(&server_addr, 0, sizeof(server_addr));
+              server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+              server_addr.sin_family = AF_INET;
+              server_addr.sin_port = htons(502);
+              if (::bind(fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+                ::listen(fd, 1);
+                id(mb_listen_fd) = fd;
+                ESP_LOGI("modbus_tcp", "Listening on port 502");
+              } else {
+                ::close(fd);
+              }
+            }
+          }
+
+          if (id(mb_listen_fd) >= 0 && id(mb_client_fd) < 0) {
+            struct sockaddr_in client_addr;
+            socklen_t client_len = sizeof(client_addr);
+            int cfd = ::accept(id(mb_listen_fd), (struct sockaddr *)&client_addr, &client_len);
+            if (cfd >= 0) {
+              ::fcntl(cfd, F_SETFL, O_NONBLOCK);
+              id(mb_client_fd) = cfd;
+              ESP_LOGI("modbus_tcp", "Client connected");
+            }
+          }
+
+          if (id(mb_client_fd) >= 0) {
+            uint8_t mb_frame[12];
+            int len = ::recv(id(mb_client_fd), (void*)mb_frame, sizeof(mb_frame), 0);
+            if (len == 12) {
+              uint8_t function_code = mb_frame[7];
+              uint16_t reg_address = ((uint16_t)mb_frame[8] << 8) | mb_frame[9];
+              uint16_t reg_value = ((uint16_t)mb_frame[10] << 8) | mb_frame[11];
+
+              if (function_code == 0x06) {
+                if (reg_address == 1 && reg_value <= 50) {
+                  id(target_grid_current) = reg_value;
+                  ESP_LOGI("modbus_tcp", "\u26a1 Write received -> target set to %d A", reg_value);
+                  ::send(id(mb_client_fd), (const void*)mb_frame, 12, 0);
+                }
+                else if (reg_address == 2) {
+                  id(p1_transmission_enabled) = (reg_value != 0);
+                  ESP_LOGW("modbus_tcp", "WATCHDOG UPDATE -> P1 Enabled Status: %s", id(p1_transmission_enabled) ? "RUNNING" : "SILENCED");
+                  ::send(id(mb_client_fd), (const void*)mb_frame, 12, 0);
+                }
+              }
+              else if (function_code == 0x03 && reg_address == 3) {
+                // Read Holding Registers: return the latest HomeWizard grid
+                // watts reading, as a signed 16-bit value (two's complement).
+                int16_t watts16 = (int16_t)id(last_grid_watts);
+                uint16_t raw = (uint16_t)watts16;
+
+                uint8_t response[11];
+                response[0] = mb_frame[0];  // echo transaction id
+                response[1] = mb_frame[1];
+                response[2] = 0x00;         // protocol id (always 0 for Modbus)
+                response[3] = 0x00;
+                response[4] = 0x00;         // length: 3 (unit id+func+bytecount) + 2 (1 register)
+                response[5] = 0x05;
+                response[6] = mb_frame[6];  // echo unit id
+                response[7] = 0x03;         // function code
+                response[8] = 0x02;         // byte count (1 register = 2 bytes)
+                response[9] = (raw >> 8) & 0xFF;
+                response[10] = raw & 0xFF;
+
+                ::send(id(mb_client_fd), (const void*)response, sizeof(response), 0);
+              }
+            } else if (len == 0 || (len < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+              ::close(id(mb_client_fd));
+              id(mb_client_fd) = -1;
+              ESP_LOGI("modbus_tcp", "Client disconnected");
+            }
+          }
+
+  # --- Task B: High-Speed Direct Socket HTTP Scraper & Loxone UDP Forwarder (DEBUG BUILD) ---
+  - interval: 1s
+    then:
+      - lambda: |-
+          int hw_sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+          if (hw_sock < 0) {
+            ESP_LOGE("homewizard", "❌ socket() failed");
+            return;
+          }
+
+          // Force an abortive close (RST) instead of a graceful FIN close --
+          // avoids TIME_WAIT, which was exhausting the tiny 13-socket lwIP
+          // pool within ~15-20s at one new TCP connection per second.
+          struct linger sl;
+          sl.l_onoff = 1;
+          sl.l_linger = 0;
+          ::setsockopt(hw_sock, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl));
+
+          struct timeval tv;
+          tv.tv_sec = 0;
+          tv.tv_usec = 500000;   // widened from 150ms to 500ms -- 150ms may be too tight
+          ::setsockopt(hw_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+          ::setsockopt(hw_sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
+          struct sockaddr_in hw_addr;
+          memset(&hw_addr, 0, sizeof(hw_addr));
+          hw_addr.sin_addr.s_addr = inet_addr("TOCHANGE_IP_OF_HOMEWIZARD");
+          hw_addr.sin_family = AF_INET;
+          hw_addr.sin_port = htons(80);
+
+          int conn_result = ::connect(hw_sock, (struct sockaddr *)&hw_addr, sizeof(hw_addr));
+          if (conn_result != 0) {
+            ESP_LOGE("homewizard", "❌ connect() failed, errno=%d", errno);
+            ::close(hw_sock);
+            return;
+          }
+          ESP_LOGD("homewizard", "✅ connected to HomeWizard");
+
+          std::string request = "GET /api/v1/data HTTP/1.1\r\nHost: TOCHANGE_IP_OF_HOMEWIZARD\r\nConnection: close\r\n\r\n";
+          int sent = ::send(hw_sock, request.c_str(), request.length(), 0);
+          if (sent <= 0) {
+            ESP_LOGE("homewizard", "❌ send() failed, errno=%d", errno);
+            ::close(hw_sock);
+            return;
+          }
+
+          // Read in a loop -- a single recv() may only capture part of the response
+          std::string response;
+          char rx_buffer[512];
+          int bytes_received;
+          int total = 0;
+          while ((bytes_received = ::recv(hw_sock, rx_buffer, sizeof(rx_buffer) - 1, 0)) > 0) {
+            rx_buffer[bytes_received] = '\0';
+            response += rx_buffer;
+            total += bytes_received;
+            if (total > 4000) break;  // safety cap
+          }
+
+          if (total == 0) {
+            ESP_LOGE("homewizard", "❌ recv() got 0 bytes (errno=%d) -- likely timeout, try raising tv_usec further", errno);
+            ::shutdown(hw_sock, SHUT_RDWR);
+            ::close(hw_sock);
+            return;
+          }
+          ESP_LOGD("homewizard", "📥 Received %d bytes total", total);
+
+          size_t p_pos = response.find("\"active_power_w\":");
+          if (p_pos == std::string::npos) {
+            ESP_LOGW("homewizard", "⚠️ Key 'active_power_w' not found in response. First 200 chars:\n%s",
+                      response.substr(0, 200).c_str());
+            ::shutdown(hw_sock, SHUT_RDWR);
+            ::close(hw_sock);
+            return;
+          }
+
+          std::string val_str = "";
+          for (size_t i = p_pos + 17; i < response.length(); ++i) {
+            char c = response[i];
+            if (c == '-' || (c >= '0' && c <= '9')) {
+              val_str += c;
+            } else if (!val_str.empty()) {
+              break;
+            }
+          }
+
+          if (!val_str.empty()) {
+            int val = atoi(val_str.c_str());
+            id(last_grid_watts) = val;
+            ESP_LOGI("homewizard", "🎯 1s Grid Data Scraped: %d W (stored for Modbus read on register 3)", val);
+          } else {
+            ESP_LOGW("homewizard", "⚠️ Found key but extracted empty value");
+          }
+
+          ::shutdown(hw_sock, SHUT_RDWR);
+          ::close(hw_sock);
+
+  - interval: 10s
+    then:
+      - lambda: |-
+          if (!id(p1_transmission_enabled)) {
+            return;
+          }
+
+          int final_amps = id(target_grid_current);
+          char amp_c3 = '0' + (final_amps % 10);
+          char amp_c2 = '0' + ((final_amps / 10) % 10);
+          char amp_c1 = '0' + ((final_amps / 100) % 10);
+
+          std::string body = "";
+          body += "/XMX5XMXCQA0000018406\r\n\r\n";
+          body += "1-3:0.2.8(40)\r\n";
+          body += "0-0:1.0.0(000101010000W)\r\n";
+          body += "0-0:96.1.1(4530303030303030303030303030303030)\r\n";
+          body += "1-0:1.8.1(000000.000*kWh)\r\n";
+          body += "1-0:2.8.1(000000.000*kWh)\r\n";
+          body += "1-0:1.8.2(000000.000*kWh)\r\n";
+          body += "1-0:2.8.2(000000.000*kWh)\r\n";
+          body += "0-0:96.14.0(0001)\r\n";
+          body += "1-0:1.7.0(00.000*kW)\r\n";
+          body += "1-0:2.7.0(00.000*kW)\r\n";
+          body += "0-0:17.0.0(000.0*kW)\r\n";
+          body += "0-0:96.3.10(1)\r\n";
+          body += "0-0:96.7.21(00000)\r\n";
+          body += "0-0:96.7.9(00000)\r\n";
+          body += "1-0:99.97.0(0)(0-0:96.7.19)\r\n";
+          body += "1-0:32.32.0(00000)\r\n";
+          body += "1-0:52.32.0(00000)\r\n";
+          body += "1-0:72.32.0(00000)\r\n";
+          body += "1-0:32.36.0(00000)\r\n";
+          body += "1-0:52.36.0(00000)\r\n";
+          body += "1-0:72.36.0(00000)\r\n";
+          body += "0-0:96.13.1(XMX_P1CS_V06)\r\n";
+          body += "0-0:96.13.0()\r\n";
+          body += "1-0:31.7.0("; body += amp_c1; body += amp_c2; body += amp_c3; body += "*A)\r\n";
+          body += "1-0:51.7.0(000*A)\r\n";
+          body += "1-0:71.7.0(000*A)\r\n";
+          body += "1-0:21.7.0(00.000*kW)\r\n";
+          body += "1-0:41.7.0(00.000*kW)\r\n";
+          body += "1-0:61.7.0(00.000*kW)\r\n";
+          body += "1-0:22.7.0(00.000*kW)\r\n";
+          body += "1-0:42.7.0(00.000*kW)\r\n";
+          body += "1-0:62.7.0(00.000*kW)\r\n";
+          body += "!";
+
+          uint16_t crc = 0x0000;
+          for (char c : body) {
+            crc ^= c;
+            for (int j = 0; j < 8; j++) {
+              if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+              else crc >>= 1;
+            }
+          }
+          char crc_buf[8];
+          snprintf(crc_buf, sizeof(crc_buf), "%04X\r\n", crc);
+          body += crc_buf;
+
+          id(send_count) += 1;
+          ESP_LOGI("p1_spy", "TX #%d -> %d A", id(send_count), final_amps);
+          id(p1_bus).write_array((const uint8_t*)body.c_str(), body.length());
