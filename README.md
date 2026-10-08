@@ -24,7 +24,7 @@ white orange, orange, white green, blue, white blue, green
 
 ## 🔍 How to Sniff the P1 Messages
 
-I added a parallel RJ11 splitter in between (Twenty4seven P1 Splitter: https://www.bol.com/be/nl/p/twenty4seven-p1-splitter-6-poort/9300000222709642/) and connected a P1 RJ11-to-USB reader (https://www.bol.com/be/nl/p/twenty4seven-slimme-meter-kabel-usb-en-rj11-wifi-p1-meter-1-8-meter-p1-splitter-home-assistant-raspberry-pi-4/9300000290115507/). 
+I added a parallel RJ11 splitter in between ([Twenty4seven P1 Splitter](https://www.bol.com/be/nl/p/twenty4seven-p1-splitter-6-poort/9300000222709642/)) and connected a P1 RJ11-to-USB reader ([Twenty4seven Smart Meter Cable](https://www.bol.com/be/nl/p/twenty4seven-slimme-meter-kabel-usb-en-rj11-wifi-p1-meter-1-8-meter-p1-splitter-home-assistant-raspberry-pi-4/9300000290115507/)).
 
 See some examples of raw messages in `sniffedP1messages.txt`.
 
@@ -36,7 +36,9 @@ You might need to change the firmware version string inside your spoofing script
 ## 🛠️ Hardware Setup
 
 I bought the following device to replace the original NewMotion device:
-* **Waveshare ESP32-S3 RS485 CAN**   https://www.amazon.com.be/-/nl/dp/B0FMYL5SZX?ref=ppx_yo2ov_dt_b_fed_asin_title
+* **[Waveshare ESP32-S3 RS485 CAN](https://www.amazon.com.be/-/nl/dp/B0FMYL5SZX?ref=ppx_yo2ov_dt_b_fed_asin_title)**
+* **[Hailege Jumper Wires 200 stuks/5 x 40 Pin Dupont Wire Assortiment Kit voor Protype Board](https://www.amazon.com.be/-/en/Hailege-Jumper-5x40Pin-Assortment-Protype/dp/B0BN1LJ843)**
+You only need 2 2,0 mm dupont wires , but this pack was cheaper ;-) 
 
 ### Waveshare Board Header Layout
 If you open the device case, you can see the black header block with these pins:
@@ -47,8 +49,6 @@ If you open the device case, you can see the black header block with these pins:
 
 Only the **blue** and **yellow** dupont wires are used. The other wires visible in the picture were there for testing and also help keep the connections securely attached.
 
-Hailege Jumper Wires 200 stuks/5 x 40 Pin Dupont Wire Assortiment Kit voor Protype Board  https://www.amazon.com.be/-/en/Hailege-Jumper-5x40Pin-Assortment-Protype/dp/B0BN1LJ843
-You only need 2 2,0 mm dupont wires , but this pack was cheaper ;-) 
 
 ---
 
