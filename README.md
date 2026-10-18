@@ -150,16 +150,20 @@ The charger uses the maximum **32A** threshold to determine the new allowed char
 * **If Solar Only = OFF:** `max_allowed_consumption` is set to `capacity_limit_kw`.
 
 ```text
-esp32 P1 Active Power kW = Amount of power being consumed now over all phases.
+esp32_P1_Active_Power_kW = Amount of power being consumed now over all phases.
 Negative value = Exporting to the grid
 Positive value = Importing from the grid
 
-spoofed_current = INT(32 + ((max_allowed_consumption_kw * 1000) / 230))
+surplus_power_kw = esp32_P1_Active_Power kWkW - max_allowed_consumption_kW
+
+spoofed_current needs to be an integer!
+
+spoofed_current = INT(32 + ((surplus_power_kw * 1000) / 230))
 (32 = Max current for my house installation)
 ```
 
 ### Safety Limiter
-The current charging power is obtained from: `http://<IP_OF_CHARGER>:12800/user/status` via the string block: `\i"chargingRate":"Charging rate: \i\v`.
+The current charging power of the charger is obtained from: `http://<IP_OF_CHARGER>:12800/user/status` via the string block: `\i"chargingRate":"Charging rate: \i\v`.
 
 ```text
 charging_current = charging_power / 230
