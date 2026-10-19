@@ -63,15 +63,15 @@ I cut the wires of the RJ11 connector of the NewMotion P1 device (leave enough s
 * **Current setup:** I left these attached to the wires going to the RJ11 connector of the original NewMotion P1 device so it still passes through the P1 LED.
 * *Next step / Future improvement:* This can probably be replaced with a simple `1kΩ` resistor between the orange and orange-white wires.
 
-* **Wago 1:** Orange wire coming from the CAT7 cable from the charger + Orange wire going to the RJ11 connector of the NewMotion P1 device.
-* **Wago 2:** Orange-white wire coming from the CAT7 cable from the charger + Orange-white wire going to the RJ11 connector of the NewMotion P1 device.
+* **Wago 1:** Orange wire coming from the nwetwork cable from the charger + Orange wire going to the RJ11 connector of the NewMotion P1 device.
+* **Wago 2:** Orange-white wire coming from the network cable from the charger + Orange-white wire going to the RJ11 connector of the NewMotion P1 device.
 
 ### 2) Green-White: Ground
-* **Wago 3:** Green-white wire coming from the CAT7 cable from the charger + Green-white wire going to the RJ11 connector of the NewMotion P1 device + **Blue Dupont wire** which is connected to **PIN 3 (GND)** of the Waveshare board.
+* **Wago 3:** Green-white wire coming from the network cable from the charger + Green-white wire going to the RJ11 connector of the NewMotion P1 device + **Blue Dupont wire** which is connected to **PIN 3 (GND)** of the Waveshare board.
 * *Note:* Once I have the 1kΩ resistor installed between the orange and orange-white lines, I should be able to get rid of the white-green line to the NewMotion device as well (Still to be tested).
 
 ### 3) Blue-White: P1 Data Send
-* **Wago 4:** Blue-white wire coming from the CAT7 cable from the charger + **Yellow Dupont wire** which is connected to **PIN 15 (GPIO6)** of the Waveshare board.
+* **Wago 4:** Blue-white wire coming from the network cable from the charger + **Yellow Dupont wire** which is connected to **PIN 15 (GPIO6)** of the Waveshare board.
 
 *See `spoofnewmotion.yaml` for the code to spoof the P1 message every 10 seconds. I also retrieve data from my HomeWizard P1 meter every second, as Loxone only allows polling every 10 seconds.*
 
