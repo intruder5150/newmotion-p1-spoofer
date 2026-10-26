@@ -138,17 +138,17 @@ You can monitor the live charger status by querying its local IP: `http://<IP_OF
 }
 ```
 
-### Headroom Calculations
-The charger uses the maximum **32A** threshold to determine the new allowed charging current:
-* If the spoofed P1 message contains **30A**, it means: *You can increase the charging current by 2A.*
-* If the spoofed P1 message contains **35A**, it means: *You are 3A over the max allowed house current. Lower the charging current by 3A.*
-
 ### Control Variables
 * I have a switch named `Solar only`.
 * I have a slider for max house consumption: `capacity_limit_kw`.
 * **If Solar Only = ON:** `max_allowed_consumption` is set to **0 kW**.
 * **If Solar Only = OFF:** `max_allowed_consumption` is set to `capacity_limit_kw`.
 
+### Headroom Calculations
+The charger uses the maximum **32A** threshold to determine the new allowed charging current:
+* If the spoofed P1 message contains **30A**, it means: *You can increase the charging current by 2A.*
+* If the spoofed P1 message contains **35A**, it means: *You are 3A over the max allowed house current. Lower the charging current by 3A.*
+  
 ```text
 esp32_P1_Active_Power_kW = Amount of power being consumed now over all phases.
 Negative value = Exporting to the grid
