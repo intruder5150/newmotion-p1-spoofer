@@ -1,6 +1,12 @@
 # newmotion-p1-spoofer
 Automated dynamic load balancing and solar surplus charging for legacy NewMotion Home Advanced 2.2 EV chargers by injecting spoofed P1/DSMR telegrams via a Waveshare ESP32-S3-RS485-CAN control board.
 
+## ⚠️ Disclaimer
+This is a personal DIY project that involves modifying physical wiring and injecting spoofed data into an EV charger. Use this guide and code entirely at your own risk. I am not responsible for any damage to your charger, vehicle, electrical installation, or voided warranties.
+
+Modification Required: The logic and calculations in this project are tailored specifically to my personal home setup (e.g., 3x230V without Neutral, monophase charger connection, and a 32A max house load). You will need to adapt the code, calculations, and safety limits to match your specific electricity installation, grid connection, and charger model.
+
+
 # Spoofing signal sent to NewMotion charger through P1
 
 Unfortunately, I have an older version of the NewMotion charger which doesn’t support Modbus over TCP, so I decided to spoof fake P1 messages myself.
